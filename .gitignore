@@ -161,4 +161,3 @@ cython_debug/
 /test_data/
 /temp/
 /app/models/saved/*
-!/app/models/saved/autoencoder_dict.pt
