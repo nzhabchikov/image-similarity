@@ -1,37 +1,42 @@
+from sklearn.neighbors import NearestNeighbors
 from typing import Annotated
 import torch
 from PIL import Image
+from torch import cosine_similarity
 from torchvision.datasets import ImageFolder
 from torch.utils.data import TensorDataset
-import numpy as np
-from fastapi import FastAPI, Query, UploadFile, File
-from app.models.autoencoder import get_embeddings, get_transformer, fine_tune
-from app.models.tools import get_autoencoder_model, get_nearest_neighbors_model, compare_embeddings, \
-    save_autoencoder_model, save_nearest_neighbors_model
-from app.common.constants import TEMP_PATH, DEFAULT_N_NEIGHBORS, FINE_TUNED_AUTOENCODER_PATH, NEAREST_NEIGHBOR_PATH
+from fastapi import FastAPI, Query, UploadFile, File, HTTPException
+from app.models.tools import get_embeddings, get_transformer
+from app.models.state import State
+from app.models.cnn_models import get_mobilenet_model
+from app.common.constants import TEMP_PATH, DEFAULT_N_NEIGHBORS, DEFAULT_RESIZE_HEIGHT, DEFAULT_RESIZE_WIDTH, \
+    SAVED_MODELS_PATH, ModelType
 from app.common.tools import unpack_archive, del_if_exist
 
 app = FastAPI()
-
-model = get_autoencoder_model()
-n_neighbors_clf = get_nearest_neighbors_model()
+state = State().load_from_file()
 
 
 @app.post('/train_model')
 def train_model(
-        images: UploadFile = File(...)
+        images: UploadFile = File(...),
+        model_type: ModelType = Query(...),
+        scale_image_height: Annotated[int, Query()] = DEFAULT_RESIZE_HEIGHT,
+        scale_image_width: Annotated[int, Query()] = DEFAULT_RESIZE_WIDTH,
 ):
+    if model_type.value == ModelType.lite.value:
+        state.cnn_model = get_mobilenet_model()
+    state.n_neighbors_model = NearestNeighbors(n_neighbors=DEFAULT_N_NEIGHBORS)
+    state.image_height = scale_image_height
+    state.image_width = scale_image_width
+
     unpack_archive(images, TEMP_PATH)
+    dataset = ImageFolder(TEMP_PATH, transform=get_transformer(state.image_height, state.image_width))
 
-    dataset = ImageFolder(TEMP_PATH, transform=get_transformer())
-    fine_tune(model=model, train_data=dataset)
+    embeddings = get_embeddings(model=state.cnn_model, data=dataset)
+    state.n_neighbors_model.fit(embeddings)
 
-    embeddings = get_embeddings(model=model, data=dataset)
-    n_neighbors_clf.fit(embeddings)
-
-    save_autoencoder_model(model)
-    save_nearest_neighbors_model(n_neighbors_clf)
-
+    state.save_n_neighbors_model(model_type.value, size=(state.image_height, state.image_width))
     del_if_exist(TEMP_PATH, is_directory=True)
     return {
         'message': 'OK'
@@ -43,27 +48,30 @@ def predict_similarity(
         image: UploadFile = File(...),
         n_neighbors: Annotated[int, Query()] = DEFAULT_N_NEIGHBORS
 ):
-    transforms = get_transformer()
+    if not state.n_neighbors_model:
+        raise HTTPException(status_code=404, detail="Not found fitted model, use /train_model handler before")
 
-    image_tensor = transforms(Image.open(image.file))
-    embedding = get_embeddings(model=model, data=TensorDataset(image_tensor.unsqueeze(0), torch.tensor([0])))
+    transforms = get_transformer(state.image_height, state.image_width)
+    n_neighbors_model = state.n_neighbors_model
+    n_neighbors = n_neighbors_model.n_samples_fit_ if n_neighbors > n_neighbors_model.n_samples_fit_ else n_neighbors
 
-    n_neighbors = n_neighbors_clf.n_samples_fit_ if n_neighbors > n_neighbors_clf.n_samples_fit_ else n_neighbors
-    neighbors_ids = n_neighbors_clf.kneighbors(embedding.reshape(1, -1),
-                                               n_neighbors=n_neighbors, return_distance=False)[0]
-    neighbors_embeddings = n_neighbors_clf._fit_X[neighbors_ids]
+    image_tensor = transforms(Image.open(image.file)).unsqueeze(0)
+    embedding = get_embeddings(model=state.cnn_model, data=TensorDataset(image_tensor, torch.zeros(1)))
 
-    probabilities = compare_embeddings(embedding, neighbors_embeddings)
-    probabilities_percent = int(np.mean(probabilities) * 100)
+    neighbors_ids = n_neighbors_model.kneighbors(embedding.reshape(1, -1), n_neighbors, return_distance=False)[0]
+    neighbors_embeddings = n_neighbors_model._fit_X[neighbors_ids]
+
+    probabilities = cosine_similarity(embedding, torch.from_numpy(neighbors_embeddings))
+    probabilities_percent = int(torch.mean(probabilities) * 100)
     return {
-        'message': f'{probabilities_percent if probabilities_percent > 0 else 0}%'
+        'message': f'{probabilities_percent}%'
     }
 
 
-@app.delete('/delete_trained_models')
-def delete_trained_models():
-    del_if_exist(FINE_TUNED_AUTOENCODER_PATH)
-    del_if_exist(NEAREST_NEIGHBOR_PATH)
+@app.delete('/clear_state')
+def clear_state():
+    del_if_exist(SAVED_MODELS_PATH, is_directory=True)
+    state.clear_state()
     return {
         'message': 'OK'
     }

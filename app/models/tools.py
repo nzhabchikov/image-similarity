@@ -1,37 +1,26 @@
 import torch
-import numpy as np
-import os
-import pickle
-from sklearn.neighbors import NearestNeighbors
-from app.models.autoencoder import AutoencoderModel
-from app.common.constants import DEVICE, AUTOENCODER_PATH, FINE_TUNED_AUTOENCODER_PATH, NEAREST_NEIGHBOR_PATH, \
-    DEFAULT_N_NEIGHBORS
+from torch.utils.data import DataLoader
+from torchvision.transforms import v2 as T
+from app.common.constants import DEVICE, DEFAULT_BATCH_SIZE, DEFAULT_RESIZE_HEIGHT, DEFAULT_RESIZE_WIDTH
 
 
-def get_autoencoder_model():
-    path = FINE_TUNED_AUTOENCODER_PATH if os.path.exists(FINE_TUNED_AUTOENCODER_PATH) else AUTOENCODER_PATH
-    model = AutoencoderModel()
-    model.load_state_dict(torch.load(path, map_location=DEVICE))
-    return model
-
-
-def get_nearest_neighbors_model():
-    if os.path.exists(NEAREST_NEIGHBOR_PATH):
-        model = pickle.load(open(NEAREST_NEIGHBOR_PATH, 'rb'))
-        return model
-    else:
-        return NearestNeighbors(n_neighbors=DEFAULT_N_NEIGHBORS)
-
-
-def save_autoencoder_model(model):
+@torch.inference_mode()
+def get_embeddings(model, data):
+    model.to(DEVICE)
     model.eval()
-    torch.save(model.state_dict(), FINE_TUNED_AUTOENCODER_PATH)
+
+    result = []
+    for x, _ in DataLoader(data, batch_size=DEFAULT_BATCH_SIZE):
+        x = x.to(DEVICE)
+        out = model(x)
+        result.extend(out.cpu())
+
+    return torch.stack(result)
 
 
-def save_nearest_neighbors_model(model):
-    path = NEAREST_NEIGHBOR_PATH
-    pickle.dump(model, open(path, 'wb'))
-
-
-def compare_embeddings(target, neighbors):
-    return [np.dot(target, neighbor) / np.linalg.norm(target) / np.linalg.norm(neighbor) for neighbor in neighbors]
+def get_transformer(height=DEFAULT_RESIZE_HEIGHT, width=DEFAULT_RESIZE_WIDTH):
+    return T.Compose([
+        T.Resize((int(height), int(width))),
+        T.Compose([T.ToImage(), T.ToDtype(torch.float32, scale=True)]),
+        T.Lambda(lambda x: x.repeat(3, 1, 1) if x.shape[0] == 1 else x)
+    ])
