@@ -3,21 +3,16 @@ import pickle
 
 from app.common.constants import NEAREST_NEIGHBORS, DEFAULT_RESIZE_HEIGHT, DEFAULT_RESIZE_WIDTH, \
     SAVED_MODELS_PATH, ModelType
-from app.models.cnn_models import get_mobilenet_model, get_mnasnet_model
+from app.models.cnn_models import get_cnn_model
 from app.common.tools import del_if_exist
 
 
 class State:
-    def __init__(self, ):
+    def __init__(self):
         self.n_neighbors_model = None
         self.cnn_model = None
-        self.image_height = None
-        self.image_width = None
-
-    def load_default(self):
-        self.cnn_model = get_mnasnet_model()
-        self.image_height, self.image_width = DEFAULT_RESIZE_HEIGHT, DEFAULT_RESIZE_WIDTH
-        return self
+        self.image_height = DEFAULT_RESIZE_HEIGHT
+        self.image_width = DEFAULT_RESIZE_WIDTH
 
     def load_from_file(self):
         if os.path.exists(SAVED_MODELS_PATH):
@@ -30,11 +25,9 @@ class State:
             if model_name:
                 self.n_neighbors_model = pickle.load(open(f'{SAVED_MODELS_PATH}/{model_name}', 'rb'))
                 cnn_model_type, size = model_name.split('-')[1:]
-                self.cnn_model = get_mobilenet_model() if cnn_model_type == ModelType.lite.value else get_mnasnet_model()
+                self.cnn_model = get_cnn_model(ModelType[cnn_model_type])
                 self.image_height, self.image_width = size.split('.')[0].split('x')
-                return self
 
-        self.load_default()
         return self
 
     def save_n_neighbors_model(self, model_type, size):
@@ -44,5 +37,5 @@ class State:
         pickle.dump(self.n_neighbors_model, open(path, 'wb'))
 
     def clear_state(self):
+        self.cnn_model = None
         self.n_neighbors_model = None
-        self.load_default()

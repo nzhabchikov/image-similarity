@@ -3,6 +3,8 @@ import shutil
 import zipfile
 from fastapi import UploadFile
 
+from app.common.constants import UNKNOWN_ARCHIVE
+
 
 def del_if_exist(path, is_directory=False):
     if os.path.exists(path):
@@ -21,4 +23,4 @@ def unpack_archive(file: UploadFile, path):
             zip_ref.extractall(path + path)
         return
 
-    raise KeyError(f'Unknown archive type: {file_type}')
+    raise KeyError(f'{UNKNOWN_ARCHIVE} {file_type}')

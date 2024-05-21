@@ -8,24 +8,24 @@ from torch.utils.data import TensorDataset
 from fastapi import FastAPI, Query, UploadFile, File, HTTPException
 from app.models.tools import get_embeddings, get_transformer
 from app.models.state import State
-from app.models.cnn_models import get_mobilenet_model
+from app.models.cnn_models import get_cnn_model
 from app.common.constants import TEMP_PATH, DEFAULT_N_NEIGHBORS, DEFAULT_RESIZE_HEIGHT, DEFAULT_RESIZE_WIDTH, \
-    SAVED_MODELS_PATH, ModelType
+    SAVED_MODELS_PATH, ModelType, SCALE_HEIGHT_DESC, SCALE_WIDTH_DESC, MODEL_TYPE_DESC, IMAGES_DESC, IMAGE_DESC, \
+    N_NEIGHBORS_DESC, NOT_FOUND_FITTED_MODEL, OK, FIT_MODEL_DESC, PREDICT_SIMILARITY_DESC, DELETE_FITTED_MODELS_DESC
 from app.common.tools import unpack_archive, del_if_exist
 
 app = FastAPI()
 state = State().load_from_file()
 
 
-@app.post('/train_model')
-def train_model(
-        images: UploadFile = File(...),
-        model_type: ModelType = Query(...),
-        scale_image_height: Annotated[int, Query()] = DEFAULT_RESIZE_HEIGHT,
-        scale_image_width: Annotated[int, Query()] = DEFAULT_RESIZE_WIDTH,
+@app.post('/fit_model', description=FIT_MODEL_DESC)
+def fit_model(
+        images: UploadFile = File(description=IMAGES_DESC),
+        model_type: ModelType = Query(description=MODEL_TYPE_DESC),
+        scale_image_height: Annotated[int, Query(description=SCALE_HEIGHT_DESC)] = DEFAULT_RESIZE_HEIGHT,
+        scale_image_width: Annotated[int, Query(description=SCALE_WIDTH_DESC)] = DEFAULT_RESIZE_WIDTH,
 ):
-    if model_type.value == ModelType.lite.value:
-        state.cnn_model = get_mobilenet_model()
+    state.cnn_model = get_cnn_model(model_type)
     state.n_neighbors_model = NearestNeighbors(n_neighbors=DEFAULT_N_NEIGHBORS)
     state.image_height = scale_image_height
     state.image_width = scale_image_width
@@ -39,17 +39,17 @@ def train_model(
     state.save_n_neighbors_model(model_type.value, size=(state.image_height, state.image_width))
     del_if_exist(TEMP_PATH, is_directory=True)
     return {
-        'message': 'OK'
+        'message': OK
     }
 
 
-@app.post('/predict_similarity')
+@app.post('/predict_similarity', description=PREDICT_SIMILARITY_DESC)
 def predict_similarity(
-        image: UploadFile = File(...),
-        n_neighbors: Annotated[int, Query()] = DEFAULT_N_NEIGHBORS
+        image: UploadFile = File(description=IMAGE_DESC),
+        n_neighbors: Annotated[int, Query(description=N_NEIGHBORS_DESC)] = DEFAULT_N_NEIGHBORS
 ):
     if not state.n_neighbors_model:
-        raise HTTPException(status_code=404, detail="Not found fitted model, use /train_model handler before")
+        raise HTTPException(status_code=404, detail=NOT_FOUND_FITTED_MODEL)
 
     transforms = get_transformer(state.image_height, state.image_width)
     n_neighbors_model = state.n_neighbors_model
@@ -68,10 +68,10 @@ def predict_similarity(
     }
 
 
-@app.delete('/clear_state')
+@app.delete('/delete_fitted_models', description=DELETE_FITTED_MODELS_DESC)
 def clear_state():
     del_if_exist(SAVED_MODELS_PATH, is_directory=True)
     state.clear_state()
     return {
-        'message': 'OK'
+        'message': OK
     }
