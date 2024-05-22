@@ -1,7 +1,10 @@
+import io
 import os
 import shutil
 import zipfile
 from fastapi import UploadFile
+
+from app.common.constants import UNKNOWN_ARCHIVE
 
 
 def del_if_exist(path, is_directory=False):
@@ -17,8 +20,8 @@ def unpack_archive(file: UploadFile, path):
     if file_type == 'zip':
         del_if_exist(path, is_directory=True)
         os.makedirs(path)
-        with zipfile.ZipFile(file=file.file) as zip_ref:
+        with zipfile.ZipFile(file=io.BytesIO(file.file.read())) as zip_ref:
             zip_ref.extractall(path + path)
         return
 
-    raise KeyError(f'Unknown archive type: {file_type}')
+    raise KeyError(f'{UNKNOWN_ARCHIVE} {file_type}')
