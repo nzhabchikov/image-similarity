@@ -1,3 +1,4 @@
+import io
 import os
 import shutil
 import zipfile
@@ -19,7 +20,7 @@ def unpack_archive(file: UploadFile, path):
     if file_type == 'zip':
         del_if_exist(path, is_directory=True)
         os.makedirs(path)
-        with zipfile.ZipFile(file=file.file) as zip_ref:
+        with zipfile.ZipFile(file=io.BytesIO(file.file.read())) as zip_ref:
             zip_ref.extractall(path + path)
         return
 
