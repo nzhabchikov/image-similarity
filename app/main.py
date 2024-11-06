@@ -7,7 +7,7 @@ from fastapi import FastAPI, Query, UploadFile, File, HTTPException
 from app.models.state import State
 from app.common.constants import DEFAULT_K_NEIGHBORS, SAVED_MODELS_PATH, IMAGES_DESC, IMAGE_DESC, \
     N_NEIGHBORS_DESC, MODEL_NOT_FOUND, OK, FIT_MODEL_DESC, PREDICT_SIMILARITY_DESC, DELETE_FITTED_MODELS_DESC, \
-    MODEL_NAME_DESC
+    MODEL_NAME_DESC, GET_MODELS_NAME_DESC
 from app.common.tools import extract_archive_to_numpy, delete_if_exist, pil_image_to_numpy
 
 app = FastAPI()
@@ -66,4 +66,12 @@ def clear_state(
     del state.knn[model_name]
     return {
         'message': OK
+    }
+
+
+@app.get('/get_models_name', description=GET_MODELS_NAME_DESC)
+def get_models_name():
+    models_name = list(state.knn.keys())
+    return {
+        'models': models_name
     }
