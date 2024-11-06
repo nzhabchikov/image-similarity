@@ -8,7 +8,7 @@
 
 ### Windows/Linux/macOS
 Для запуска необходима версия python 3.10+
-1. `pip install -r requirements.txt -r requirements-cuda121.txt`
+1. `pip install -r requirements.txt`
 2. `uvicorn app.main:app --port 8000 --host 0.0.0.0`
 
 
