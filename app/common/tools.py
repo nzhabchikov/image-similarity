@@ -2,12 +2,14 @@ import io
 import os
 import shutil
 import zipfile
+import numpy as np
+from PIL import Image
 from fastapi import UploadFile
 
-from app.common.constants import UNKNOWN_ARCHIVE
+from app.common.constants import UNKNOWN_ARCHIVE, DEFAULT_HEIGHT, DEFAULT_WIDTH
 
 
-def del_if_exist(path, is_directory=False):
+def delete_if_exist(path, is_directory=False):
     if os.path.exists(path):
         if is_directory:
             shutil.rmtree(path)
@@ -15,13 +17,21 @@ def del_if_exist(path, is_directory=False):
             os.remove(path)
 
 
-def unpack_archive(file: UploadFile, path):
+def pil_image_to_numpy(image):
+    image = image.resize((DEFAULT_HEIGHT, DEFAULT_WIDTH))
+    image = np.array(image, dtype=np.float32).transpose(2, 0, 1) / 255
+    return image
+
+
+def extract_archive_to_numpy(file: UploadFile):
     file_type = file.filename.split('.')[-1]
     if file_type == 'zip':
-        del_if_exist(path, is_directory=True)
-        os.makedirs(path)
-        with zipfile.ZipFile(file=io.BytesIO(file.file.read())) as zip_ref:
-            zip_ref.extractall(path + path)
-        return
+        results = []
+        with zipfile.ZipFile(file=io.BytesIO(file.file.read())) as zf:
+            for file in zf.namelist():
+                with zf.open(file) as f:
+                    img = pil_image_to_numpy(Image.open(f))
+                    results.append(img)
+        return np.array(results)
 
     raise KeyError(f'{UNKNOWN_ARCHIVE} {file_type}')
