@@ -17,3 +17,4 @@ FIT_MODEL_DESC = 'Получение эмбедингов изображений
 PREDICT_SIMILARITY_DESC = 'Получение эмбеддинга изображения и сравнение с ближайшими эмбеддингами.'
 DELETE_FITTED_MODELS_DESC = 'Удаление модели.'
 MODEL_NAME_DESC = 'Название модели.'
+GET_MODELS_NAME_DESC = 'Получение списка моделей.'
